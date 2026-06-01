@@ -4,7 +4,7 @@ export PATH=.:/opt/kafka/bin:$PATH
 
 function format_time() {
    local ts=$1
-   date -d "$ts UTC" +%s
+   date -d "$ts" "+%s"
 }
 
 function get_offset() {
