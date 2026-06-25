@@ -3,7 +3,12 @@ Kaf tool
 
 This is Kafka troubleshooting tool to put messages on Kafka topics and evaluate performance with threading and blocking strategies.<br/>
 
-*producer.properties*, and *message.json" files are required in current directory.<br/>
+*producer.properties*, and *message.json* files are required in the current directory.<br/>
+
+To run:
+```
+java -jar kaf-1.0.0
+```
 
 *producer.properties* is Kafka producer configuration file.</br>
 
