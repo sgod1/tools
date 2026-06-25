@@ -82,6 +82,9 @@ public class MessageWorker {
         final Properties props = loadProperties(propertiesFile);
 
         final String topic = props.getProperty("topic", "");
+        if (topic.isEmpty()) {
+            throw new IllegalArgumentException("Topic is not defined in producer.properties file");
+        }
 
         // producer is thread safe and will be passed to worker threads
         try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
