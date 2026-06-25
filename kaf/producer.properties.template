@@ -1,0 +1,13 @@
+bootstrap.servers=
+
+topic=
+
+ssl.truststore.certificates=-----BEGIN CERTIFICATE-----\nMIIDIpRV91TEn-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIDIDCCAge1Xgj\n-----END CERTIFICATE-----
+ssl.truststore.type=PEM
+security.protocol=SASL_SSL
+sasl.mechanism=PLAIN
+sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="user" password="password";
+
+client.id=
+acks=all
+enable.idempotence=true
