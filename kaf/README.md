@@ -17,6 +17,7 @@ Paste CA certificates as one line for the *ssl.truststore.certificates* property
 
 *topic* property is requied.<br/>
 
+*producer.propeties* example
 ```
 bootstrap.servers=topdogs-roky-ibm-egw-rt-cp4i.apps.roky.szesto.io:443,topdogs-roky-ibm-egw-rt-1-cp4i.apps.roky.szesto.io:443,topdogs-roky-ibm-egw-rt-2-cp4i.apps.roky.szesto.io:443,topdogs-roky-ibm-egw-rt-3-cp4i.apps.roky.szesto.io:443,topdogs-roky-ibm-egw-rt-4-cp4i.apps.roky.szesto.io:443,topdogs-toby-ibm-egw-rt-cp4i.apps.roky.szesto.io:443,topdogs-toby-ibm-egw-rt-1-cp4i.apps.roky.szesto.io:443,topdogs-toby-ibm-egw-rt-2-cp4i.apps.roky.szesto.io:443,topdogs-toby-ibm-egw-rt-3-cp4i.apps.roky.szesto.io:443,topdogs-toby-ibm-egw-rt-4-cp4i.apps.roky.szesto.io:443
 
