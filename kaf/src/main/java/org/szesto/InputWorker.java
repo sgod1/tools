@@ -1,8 +1,6 @@
 package org.szesto;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.util.Optional;
 
 public class InputWorker {
@@ -18,6 +16,12 @@ public class InputWorker {
 
     public static String readStdin() {
         return readInputStream(System.in);
+    }
+
+    public static String readFile(String path) throws IOException {
+        try (FileInputStream fis = new FileInputStream(path)) {
+            return readInputStream(fis);
+        }
     }
 
     public Optional<String> nextMessage() {
