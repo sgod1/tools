@@ -7,7 +7,7 @@ This is Kafka troubleshooting tool to put messages on Kafka topics and evaluate 
 
 To run:
 ```
-java -jar kaf-1.0.0
+java -jar kaf-1.0.0.jar
 ```
 
 *producer.properties* is Kafka producer configuration file.</br>
