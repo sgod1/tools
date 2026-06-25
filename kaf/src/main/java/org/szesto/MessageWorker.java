@@ -35,7 +35,12 @@ public class MessageWorker {
 
     public static Future<RecordMetadata> sendMessageNonBlocking(KafkaProducer<String, String> producer, ProducerRecord<String, String> record) {
         return producer.send(record, (metadata, exception) -> {
-            // log exception
+            if (exception != null) {
+                logger.error("Callback notify: Error while sending message", exception);
+            }
+            else {
+                logger.info("Callback notify: Message sent to topic {} partition {} offset {}", metadata.topic(), metadata.partition(), metadata.offset());
+            }
         });
     }
 
@@ -84,7 +89,7 @@ public class MessageWorker {
             // apply reading strategy
             final String buf = InputWorker.readFile(messageFile);
 
-            final ProducerRecord<String, String> record = makeRecord(topic, "key", buf);
+            final ProducerRecord<String, String> record = makeRecord(topic, null, buf);
 
             // apply threading strategy
             final RecordMetadata meta = sendMessageBlocking(producer, record);
