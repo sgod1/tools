@@ -6,8 +6,11 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringSerializer;
 
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Properties;
 import java.util.concurrent.Future;
 
@@ -38,9 +41,17 @@ public class MessageWorker {
 
     public static Properties loadProperties(String propertiesFile) throws IOException {
         Properties props = new Properties();
+
+        // load properties with classloader (resources)
         try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(propertiesFile)) {
             props.load(is);
         }
+
+        // load properties from input file
+        try (FileInputStream fis = new FileInputStream(propertiesFile)) {
+            props.load(fis);
+        }
+
         return props;
     }
 
