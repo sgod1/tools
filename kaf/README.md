@@ -19,7 +19,7 @@ ssl.truststore.certificates=-----BEGIN CERTIFICATE-----\nMIIRwhV91TE\n-----END C
 ssl.truststore.type=PEM
 security.protocol=SASL_SSL
 sasl.mechanism=PLAIN
-sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="eem-8584c1f8-7939-468f-927d-deab19ef9cb9" password="fb10c5b5-fb70-4917-a9a7-e1e6de5fcd74";
+sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="user" password="password";
 
 topic=zorro
 
