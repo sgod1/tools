@@ -18,7 +18,7 @@ java -jar kaf-1.0.0.jar
 *producer.properties* is Kafka producer configuration file.</br>
 
 SSL truststore of type *PEM* is expected.<br/>
-Place CA certificates as one line in *ssl.truststore.certificates* property.<br/>
+Place CA certificates in *ssl.truststore.certificates* property.<br/>
 
 *topic* property is requied.<br/>
 
