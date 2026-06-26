@@ -3,6 +3,11 @@ Kaf tool
 
 This is Kafka troubleshooting tool to put messages on Kafka topics and evaluate performance with threading and blocking strategies.<br/>
 
+To build: *jdk 21*
+```
+mvnw install
+```
+
 *producer.properties*, and *message.json* files are required in the current directory.<br/>
 
 To run:
@@ -13,7 +18,7 @@ java -jar kaf-1.0.0.jar
 *producer.properties* is Kafka producer configuration file.</br>
 
 SSL truststore of type *PEM* is expected.<br/>
-Paste CA certificates as one line for the *ssl.truststore.certificates* property.<br/>
+Place CA certificates as one line in *ssl.truststore.certificates* property.<br/>
 
 *topic* property is requied.<br/>
 
