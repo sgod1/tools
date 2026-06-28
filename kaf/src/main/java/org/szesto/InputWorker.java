@@ -1,6 +1,7 @@
 package org.szesto;
 
 import java.io.*;
+import java.nio.file.Paths;
 import java.util.Optional;
 
 public class InputWorker {
@@ -22,6 +23,10 @@ public class InputWorker {
         try (FileInputStream fis = new FileInputStream(path)) {
             return readInputStream(fis);
         }
+    }
+
+    public static boolean fileExists(String path) {
+        return Paths.get(path).toFile().exists();
     }
 
     public Optional<String> nextMessage() {

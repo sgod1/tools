@@ -66,12 +66,25 @@ public class MessageWorker {
         return new KafkaProducer<>(props);
     }
 
-    public static void main(String... args) throws IOException {
-        final String messageFile = "message.json";
-
-        final String propertiesFile = "producer.properties";
+    public static void checkInput(String propertiesFile, String messageFile) {
 
         logger.info("Kafka properties file: {}, message file: {}", propertiesFile, messageFile);
+
+        if (!InputWorker.fileExists(propertiesFile)) {
+            throw new IllegalArgumentException("File '" + propertiesFile + "' not found");
+        }
+
+        if (!InputWorker.fileExists(messageFile)) {
+            throw new IllegalArgumentException("File '" + messageFile + "' not found");
+        }
+    }
+
+    public static void main(String... args) throws IOException {
+
+        final String messageFile = "message.json";
+        final String propertiesFile = "producer.properties";
+
+        checkInput(propertiesFile, messageFile);
 
         final Properties props = loadProperties(propertiesFile);
 
