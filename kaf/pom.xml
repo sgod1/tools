@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.szesto</groupId>
-  <artifactId>kaf</artifactId>
+  <artifactId>pepsico-kafka-test</artifactId>
   <version>1.0.0</version>
   <packaging>jar</packaging>
 
