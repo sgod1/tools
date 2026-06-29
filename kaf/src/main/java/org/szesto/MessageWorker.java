@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Properties;
 import java.util.concurrent.Future;
 
@@ -49,13 +48,11 @@ public class MessageWorker {
     public static Properties loadProperties(String propertiesFile) throws IOException {
         Properties props = new Properties();
 
-        // load properties with classloader (resources)
-        try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(propertiesFile)) {
-            props.load(is);
-        }
+        props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
 
         // load properties from input file
-        try (FileInputStream fis = new FileInputStream(propertiesFile)) {
+        try (FileInputStream fis = new FileInputStream(InputWorker.absolutePath(propertiesFile).toString())) {
             props.load(fis);
         }
 
@@ -70,11 +67,11 @@ public class MessageWorker {
 
         logger.info("Kafka properties file: {}, message file: {}", propertiesFile, messageFile);
 
-        if (!InputWorker.fileExists(propertiesFile)) {
+        if (InputWorker.fileMissing(propertiesFile)) {
             throw new IllegalArgumentException("File '" + propertiesFile + "' not found");
         }
 
-        if (!InputWorker.fileExists(messageFile)) {
+        if (InputWorker.fileMissing(messageFile)) {
             throw new IllegalArgumentException("File '" + messageFile + "' not found");
         }
     }
