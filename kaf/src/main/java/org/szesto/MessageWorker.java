@@ -8,10 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.*;
 
 public class MessageWorker {
@@ -24,6 +21,11 @@ public class MessageWorker {
     public static RecordMetadata sendMessageBlocking(Semaphore sem, CountDownLatch latch, KafkaProducer<String, String> producer, ProducerRecord<String, String> record) {
         try {
             sem.acquire();
+
+            // random value between 0 and 1000
+            long dt = ThreadLocalRandom.current().nextInt(1200, 1500);
+            TimeUnit.MILLISECONDS.sleep(dt);
+
             return producer.send(record).get();
 
         } catch (Exception e) {
@@ -84,29 +86,57 @@ public class MessageWorker {
         }
     }
 
+    public static void checkFutures(Map<Integer, Future<RecordMetadata>> futures) {
+
+        Iterator<Integer> iter = futures.keySet().iterator();
+
+        while (iter.hasNext()) {
+            int k = iter.next();
+
+            if (futures.get(k).isDone()) {
+                try {
+                    RecordMetadata meta = futures.get(k).get();
+                    logger.info("Message sent to topic {} partition {} offset {}", meta.topic(), meta.partition(), meta.offset());
+
+                } catch (ExecutionException | InterruptedException e) {
+                    logger.error("Error sending message", e);
+
+                    // recycle producer? return retry = true
+                }
+
+                iter.remove();
+            }
+        }
+    }
+
     public static boolean messageLoop(String messageFile,  String topic, ExecutorService executor, KafkaProducer<String, String> producer) throws IOException {
 
         // one file or collection of files
         final String buf = InputWorker.readFile(messageFile);
 
         // batches of m messages
+        final int batches = 100;
 
-        // send m messages over time t
-        // send m messages over time t for the duration d
-        // send m messages
-
-        final int maxMessages = 100;
-
-        CountDownLatch latch = new CountDownLatch(maxMessages);
-        Semaphore sem = new Semaphore(50);
+        // rate: messages per second
+        final int maxMessages = 50;
 
         Map<Integer, Future<RecordMetadata>> futures = new HashMap<>();
 
-        for (int mcount = 0; mcount < maxMessages; mcount++) {
-            final ProducerRecord<String, String> record = makeRecord(topic, null, buf);
+        CountDownLatch latch = new CountDownLatch(maxMessages * batches);
+        Semaphore sem = new Semaphore(1000);
 
-            Future<RecordMetadata> future = executor.submit(() -> sendMessageBlocking(sem, latch, producer, record));
-            futures.put(future.hashCode(), future);
+        for (int b = 0; b < batches; b++) {
+
+            // rate: m/s
+            for (int mcount = 0; mcount < maxMessages; mcount++) {
+
+                final ProducerRecord<String, String> record = makeRecord(topic, null, buf);
+
+                Future<RecordMetadata> future = executor.submit(() -> sendMessageBlocking(sem, latch, producer, record));
+                futures.put(future.hashCode(), future);
+            }
+
+            checkFutures(futures);
         }
 
         boolean complete = false;
@@ -119,26 +149,9 @@ public class MessageWorker {
                 throw new RuntimeException(e);
             }
 
-            Iterator<Integer> iter = futures.keySet().iterator();
-
-            while (iter.hasNext()) {
-                int k = iter.next();
-
-                if (futures.get(k).isDone()) {
-                    try {
-                        RecordMetadata meta = futures.get(k).get();
-                        logger.info("Message sent to topic {} partition {} offset {}", meta.topic(), meta.partition(), meta.offset());
-
-                    } catch (ExecutionException | InterruptedException e) {
-                        logger.error("Error sending message", e);
-
-                        // recycle producer? return retry = true
-                    }
-
-                    iter.remove();
-                }
-            }
+            checkFutures(futures);
         }
+
 
         // no retry
         return false;
