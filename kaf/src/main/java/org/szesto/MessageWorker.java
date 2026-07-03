@@ -8,8 +8,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 public class MessageWorker {
 
@@ -18,8 +21,9 @@ public class MessageWorker {
     public MessageWorker() {
     }
 
-    public static RecordMetadata sendMessageBlocking(KafkaProducer<String, String> producer, ProducerRecord<String, String> record) {
+    public static RecordMetadata sendMessageBlocking(Semaphore sem, CountDownLatch latch, KafkaProducer<String, String> producer, ProducerRecord<String, String> record) {
         try {
+            sem.acquire();
             return producer.send(record).get();
 
         } catch (Exception e) {
@@ -27,6 +31,10 @@ public class MessageWorker {
             logger.error("Error while sending message", e);
 
             throw new RuntimeException(e);
+        }
+        finally {
+            sem.release();
+            latch.countDown();
         }
     }
 
@@ -76,6 +84,66 @@ public class MessageWorker {
         }
     }
 
+    public static boolean messageLoop(String messageFile,  String topic, ExecutorService executor, KafkaProducer<String, String> producer) throws IOException {
+
+        // one file or collection of files
+        final String buf = InputWorker.readFile(messageFile);
+
+        // batches of m messages
+
+        // send m messages over time t
+        // send m messages over time t for the duration d
+        // send m messages
+
+        final int maxMessages = 100;
+
+        CountDownLatch latch = new CountDownLatch(maxMessages);
+        Semaphore sem = new Semaphore(50);
+
+        Map<Integer, Future<RecordMetadata>> futures = new HashMap<>();
+
+        for (int mcount = 0; mcount < maxMessages; mcount++) {
+            final ProducerRecord<String, String> record = makeRecord(topic, null, buf);
+
+            Future<RecordMetadata> future = executor.submit(() -> sendMessageBlocking(sem, latch, producer, record));
+            futures.put(future.hashCode(), future);
+        }
+
+        boolean complete = false;
+
+        while (!complete) {
+            try {
+                complete = latch.await(100L, TimeUnit.MILLISECONDS);
+
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+
+            Iterator<Integer> iter = futures.keySet().iterator();
+
+            while (iter.hasNext()) {
+                int k = iter.next();
+
+                if (futures.get(k).isDone()) {
+                    try {
+                        RecordMetadata meta = futures.get(k).get();
+                        logger.info("Message sent to topic {} partition {} offset {}", meta.topic(), meta.partition(), meta.offset());
+
+                    } catch (ExecutionException | InterruptedException e) {
+                        logger.error("Error sending message", e);
+
+                        // recycle producer? return retry = true
+                    }
+
+                    iter.remove();
+                }
+            }
+        }
+
+        // no retry
+        return false;
+    }
+
     public static void main(String... args) throws IOException {
 
         final String messageFile = "message.json";
@@ -90,18 +158,16 @@ public class MessageWorker {
             throw new IllegalArgumentException("Topic is not defined in producer.properties file");
         }
 
-        // producer is thread safe and will be passed to worker threads
-        try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
-            // apply reading strategy
-            final String buf = InputWorker.readFile(messageFile);
+            boolean retry = true;
 
-            final ProducerRecord<String, String> record = makeRecord(topic, null, buf);
+            while (retry) {
 
-            // apply threading strategy
-            final RecordMetadata meta = sendMessageBlocking(producer, record);
-
-            logger.info("Message sent to topic {} partition {} offset {}", meta.topic(), meta.partition(), meta.offset());
+                try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
+                    retry = MessageWorker.messageLoop(messageFile, topic, executor, producer);
+                }
+            }
         }
     }
 }
