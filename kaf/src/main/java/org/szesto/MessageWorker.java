@@ -3,6 +3,9 @@ package org.szesto;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.OutOfOrderSequenceException;
+import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,6 +17,17 @@ import java.util.concurrent.*;
 public class MessageWorker {
 
     private static final Logger logger = LoggerFactory.getLogger(MessageWorker.class);
+
+    public static enum SendReturnCode {
+        SUCCESS,
+        CONTINUE_ON_ERROR,
+        CLOSE_PRODUCER,
+        FATAL_ERROR;
+
+        public static boolean successOrRecover(SendReturnCode rc) {
+            return rc != CLOSE_PRODUCER && rc != FATAL_ERROR;
+        }
+    }
 
     public MessageWorker() {
     }
@@ -86,7 +100,9 @@ public class MessageWorker {
         }
     }
 
-    public static boolean checkFutures(Map<Integer, Future<RecordMetadata>> futures) {
+    public static SendReturnCode checkFutures(Map<Integer, Future<RecordMetadata>> futures) {
+
+        SendReturnCode rc = SendReturnCode.SUCCESS;
 
         Iterator<Integer> iter = futures.keySet().iterator();
 
@@ -99,36 +115,52 @@ public class MessageWorker {
                     logger.info("Message sent to topic {} partition {} offset {}", meta.topic(), meta.partition(), meta.offset());
 
                 } catch (ExecutionException | InterruptedException e) {
-                    logger.error("Error sending message", e);
+                    Throwable cause = e.getCause();
 
-                    // recycle producer? return retry = true
-                    return true;
+                    logger.error("Error sending message, root cause: ", e);
+
+                    switch (cause) {
+                        case UnsupportedVersionException unsupportedVersionException -> rc = SendReturnCode.FATAL_ERROR;
+                        case AuthorizationException authorizationException -> rc = SendReturnCode.FATAL_ERROR;
+                        case OutOfOrderSequenceException outOfOrderSequenceException -> {
+                            if (SendReturnCode.successOrRecover(rc)) {
+                                rc = SendReturnCode.CLOSE_PRODUCER;
+                            }
+                        }
+                        case null, default -> {
+                            if (SendReturnCode.successOrRecover(rc)) {
+                                rc = SendReturnCode.CONTINUE_ON_ERROR;
+                            }
+                        }
+                    }
                 }
 
                 iter.remove();
             }
         }
 
-        return false;
+        return rc;
     }
 
-    public static boolean messageLoop(String messageFile,  String topic, ExecutorService executor, KafkaProducer<String, String> producer) throws IOException {
+    public static SendReturnCode messageLoop(String messageFile,  String topic, ExecutorService executor, KafkaProducer<String, String> producer) throws IOException {
 
         // one file or collection of files
         final String buf = InputWorker.readFile(messageFile);
 
         // batches of m messages
-        final int batches = 100;
+        final int batches = 50;
 
         // rate: messages per second
-        final int maxMessages = 50;
+        final int maxMessages = 20;
 
         Map<Integer, Future<RecordMetadata>> futures = new HashMap<>();
 
         CountDownLatch latch = new CountDownLatch(maxMessages * batches);
         Semaphore sem = new Semaphore(1000);
 
-        for (int b = 0; b < batches; b++) {
+        SendReturnCode rc = SendReturnCode.SUCCESS;
+
+        for (int b = 0; b < batches && SendReturnCode.successOrRecover(rc); b++) {
 
             // rate: m/s
             for (int mcount = 0; mcount < maxMessages; mcount++) {
@@ -139,10 +171,7 @@ public class MessageWorker {
                 futures.put(future.hashCode(), future);
             }
 
-            boolean retry = checkFutures(futures);
-            if (retry) {
-                return true;
-            }
+            rc = checkFutures(futures);
         }
 
         boolean complete = false;
@@ -155,14 +184,18 @@ public class MessageWorker {
                 throw new RuntimeException(e);
             }
 
-            boolean retry = checkFutures(futures);
-            if (retry) {
-                return true;
+            SendReturnCode rc1 = checkFutures(futures);
+
+            if (SendReturnCode.successOrRecover(rc)) {
+                rc = rc1;
+            }
+
+            if (futures.isEmpty()) {
+                complete = true;
             }
         }
 
-        // no retry
-        return false;
+        return rc;
     }
 
     public static void main(String... args) throws IOException {
@@ -180,15 +213,12 @@ public class MessageWorker {
         }
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-
-            boolean retry = true;
-
-            while (retry) {
-
+            SendReturnCode rc = SendReturnCode.SUCCESS;
+            do {
                 try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
-                    retry = MessageWorker.messageLoop(messageFile, topic, executor, producer);
+                    rc = MessageWorker.messageLoop(messageFile, topic, executor, producer);
                 }
-            }
+            } while (rc == SendReturnCode.CLOSE_PRODUCER);
         }
     }
 }
