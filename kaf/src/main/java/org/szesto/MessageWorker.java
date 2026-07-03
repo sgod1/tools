@@ -86,7 +86,7 @@ public class MessageWorker {
         }
     }
 
-    public static void checkFutures(Map<Integer, Future<RecordMetadata>> futures) {
+    public static boolean checkFutures(Map<Integer, Future<RecordMetadata>> futures) {
 
         Iterator<Integer> iter = futures.keySet().iterator();
 
@@ -102,11 +102,14 @@ public class MessageWorker {
                     logger.error("Error sending message", e);
 
                     // recycle producer? return retry = true
+                    return true;
                 }
 
                 iter.remove();
             }
         }
+
+        return false;
     }
 
     public static boolean messageLoop(String messageFile,  String topic, ExecutorService executor, KafkaProducer<String, String> producer) throws IOException {
@@ -136,7 +139,10 @@ public class MessageWorker {
                 futures.put(future.hashCode(), future);
             }
 
-            checkFutures(futures);
+            boolean retry = checkFutures(futures);
+            if (retry) {
+                return true;
+            }
         }
 
         boolean complete = false;
@@ -149,9 +155,11 @@ public class MessageWorker {
                 throw new RuntimeException(e);
             }
 
-            checkFutures(futures);
+            boolean retry = checkFutures(futures);
+            if (retry) {
+                return true;
+            }
         }
-
 
         // no retry
         return false;
