@@ -206,11 +206,11 @@ public class MessageWorker {
         int rate = 0;
         int batches = 0;
 
-        if (args.length >= 2) {
+        if (args.length >= 1) {
             rate = Integer.parseInt(args[0]);
         }
 
-        if (args.length >= 3) {
+        if (args.length >= 2) {
             batches = Integer.parseInt(args[1]);
         }
 
