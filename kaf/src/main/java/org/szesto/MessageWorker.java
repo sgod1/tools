@@ -18,13 +18,13 @@ public class MessageWorker {
 
     private static final Logger logger = LoggerFactory.getLogger(MessageWorker.class);
 
-    public static enum SendReturnCode {
+    public static enum BatchSendReturnCode {
         SUCCESS,
         CONTINUE_ON_ERROR,
         CLOSE_PRODUCER,
         FATAL_ERROR;
 
-        public static boolean successOrRecover(SendReturnCode rc) {
+        public static boolean successOrRecover(BatchSendReturnCode rc) {
             return rc != CLOSE_PRODUCER && rc != FATAL_ERROR;
         }
     }
@@ -99,9 +99,9 @@ public class MessageWorker {
         }
     }
 
-    public static SendReturnCode checkFutures(Map<Integer, Future<RecordMetadata>> futures) {
+    public static BatchSendReturnCode checkFutures(Map<Integer, Future<RecordMetadata>> futures) {
 
-        SendReturnCode rc = SendReturnCode.SUCCESS;
+        BatchSendReturnCode brc = BatchSendReturnCode.SUCCESS;
 
         Iterator<Integer> iter = futures.keySet().iterator();
 
@@ -119,16 +119,16 @@ public class MessageWorker {
                     logger.error("Error sending message, root cause: ", e);
 
                     switch (cause) {
-                        case UnsupportedVersionException unsupportedVersionException -> rc = SendReturnCode.FATAL_ERROR;
-                        case AuthorizationException authorizationException -> rc = SendReturnCode.FATAL_ERROR;
+                        case UnsupportedVersionException unsupportedVersionException -> brc = BatchSendReturnCode.FATAL_ERROR;
+                        case AuthorizationException authorizationException -> brc = BatchSendReturnCode.FATAL_ERROR;
                         case OutOfOrderSequenceException outOfOrderSequenceException -> {
-                            if (SendReturnCode.successOrRecover(rc)) {
-                                rc = SendReturnCode.CLOSE_PRODUCER;
+                            if (BatchSendReturnCode.successOrRecover(brc)) {
+                                brc = BatchSendReturnCode.CLOSE_PRODUCER;
                             }
                         }
                         case null, default -> {
-                            if (SendReturnCode.successOrRecover(rc)) {
-                                rc = SendReturnCode.CONTINUE_ON_ERROR;
+                            if (BatchSendReturnCode.successOrRecover(brc)) {
+                                brc = BatchSendReturnCode.CONTINUE_ON_ERROR;
                             }
                         }
                     }
@@ -138,10 +138,10 @@ public class MessageWorker {
             }
         }
 
-        return rc;
+        return brc;
     }
 
-    public static SendReturnCode messageLoop(String messageFile,  String topic, ExecutorService executor, KafkaProducer<String, String> producer, SendParams sendParams) throws IOException {
+    public static BatchSendReturnCode messageLoop(String messageFile, String topic, ExecutorService executor, KafkaProducer<String, String> producer, SendParams sendParams) throws IOException {
 
         // one file or collection of files
         final String buf = InputWorker.readFile(messageFile);
@@ -157,9 +157,9 @@ public class MessageWorker {
         CountDownLatch latch = new CountDownLatch(1);
         Semaphore sem = new Semaphore(1000);
 
-        SendReturnCode rc = SendReturnCode.SUCCESS;
+        BatchSendReturnCode brc = BatchSendReturnCode.SUCCESS;
 
-        for (int b = 0; b < batches && SendReturnCode.successOrRecover(rc); b++) {
+        for (int b = 0; b < batches && BatchSendReturnCode.successOrRecover(brc); b++) {
 
             // rate: m/s
             for (int mcount = 0; mcount < maxMessages; mcount++) {
@@ -172,7 +172,7 @@ public class MessageWorker {
 
             logger.info("Sent {} messages in batch {}, outstanding futures {}", maxMessages, b, futures.size());
 
-            rc = checkFutures(futures);
+            brc = checkFutures(futures);
         }
 
         logger.info("Finished sending, outstanding futures {}", futures.size());
@@ -187,10 +187,10 @@ public class MessageWorker {
                 throw new RuntimeException(e);
             }
 
-            SendReturnCode rc1 = checkFutures(futures);
+            BatchSendReturnCode brc1 = checkFutures(futures);
 
-            if (SendReturnCode.successOrRecover(rc)) {
-                rc = rc1;
+            if (BatchSendReturnCode.successOrRecover(brc)) {
+                brc = brc1;
             }
 
             if (futures.isEmpty()) {
@@ -198,7 +198,7 @@ public class MessageWorker {
             }
         }
 
-        return rc;
+        return brc;
     }
 
     public static SendParams parseInput(String ...args) {
@@ -251,12 +251,12 @@ public class MessageWorker {
         }
 
         try (ExecutorService executor = executorsServiceFactory(props)) {
-            SendReturnCode rc = SendReturnCode.SUCCESS;
+            BatchSendReturnCode brc = BatchSendReturnCode.SUCCESS;
             do {
                 try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
-                    rc = MessageWorker.messageLoop(messageFile, topic, executor, producer, sendParams);
+                    brc = MessageWorker.messageLoop(messageFile, topic, executor, producer, sendParams);
                 }
-            } while (rc == SendReturnCode.CLOSE_PRODUCER);
+            } while (brc == BatchSendReturnCode.CLOSE_PRODUCER);
         }
     }
 }
