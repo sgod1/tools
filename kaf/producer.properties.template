@@ -11,3 +11,8 @@ sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule require
 client.id=
 acks=all
 enable.idempotence=true
+
+executors.factory=virtual
+#executors.factory=cached
+#executors.factory=fixed
+#executors.fixedThreadPoolSize=50

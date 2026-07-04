@@ -217,6 +217,23 @@ public class MessageWorker {
         return new SendParams(rate, batches);
     }
 
+    public static ExecutorService executorsServiceFactory(Properties properties) {
+        final String executorsFactory = properties.getProperty("executors.factory", "virtual");
+
+        logger.info("Using executors factory: {}", executorsFactory);
+
+        if (executorsFactory.equals("virtual")) {
+            return Executors.newVirtualThreadPerTaskExecutor();
+        } else if (executorsFactory.equals("cached")) {
+            return Executors.newCachedThreadPool();
+        } else {
+            final int threadPoolSize = Integer.parseInt(properties.getProperty("executors.fixedThreadPoolSize", "50"));
+            logger.info("Using fixed thread pool size: {}", threadPoolSize);
+
+            return Executors.newFixedThreadPool(threadPoolSize);
+        }
+    }
+
     public static void main(String... args) throws IOException {
 
         final String messageFile = "message.json";
@@ -233,7 +250,7 @@ public class MessageWorker {
             throw new IllegalArgumentException("Topic is not defined in producer.properties file");
         }
 
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (ExecutorService executor = executorsServiceFactory(props)) {
             SendReturnCode rc = SendReturnCode.SUCCESS;
             do {
                 try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
