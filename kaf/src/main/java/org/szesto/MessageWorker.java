@@ -32,7 +32,7 @@ public class MessageWorker {
     public MessageWorker() {
     }
 
-    public static RecordMetadata sendMessageBlocking(Semaphore sem, CountDownLatch latch, KafkaProducer<String, String> producer, ProducerRecord<String, String> record) {
+    public static RecordMetadata sendMessageBlocking(Semaphore sem, KafkaProducer<String, String> producer, ProducerRecord<String, String> record) {
         try {
             sem.acquire();
 
@@ -50,7 +50,6 @@ public class MessageWorker {
         }
         finally {
             sem.release();
-            latch.countDown();
         }
     }
 
@@ -142,20 +141,20 @@ public class MessageWorker {
         return rc;
     }
 
-    public static SendReturnCode messageLoop(String messageFile,  String topic, ExecutorService executor, KafkaProducer<String, String> producer) throws IOException {
+    public static SendReturnCode messageLoop(String messageFile,  String topic, ExecutorService executor, KafkaProducer<String, String> producer, SendParams sendParams) throws IOException {
 
         // one file or collection of files
         final String buf = InputWorker.readFile(messageFile);
 
-        // batches of m messages
-        final int batches = 50;
-
         // rate: messages per second
-        final int maxMessages = 20;
+        final int maxMessages = sendParams.rate() > 0 ? sendParams.rate() : 1;
+
+        // batches of m messages
+        final int batches = sendParams.batches() > 0 ? sendParams.batches() : 1;
 
         Map<Integer, Future<RecordMetadata>> futures = new HashMap<>();
 
-        CountDownLatch latch = new CountDownLatch(maxMessages * batches);
+        CountDownLatch latch = new CountDownLatch(1);
         Semaphore sem = new Semaphore(1000);
 
         SendReturnCode rc = SendReturnCode.SUCCESS;
@@ -167,12 +166,16 @@ public class MessageWorker {
 
                 final ProducerRecord<String, String> record = makeRecord(topic, null, buf);
 
-                Future<RecordMetadata> future = executor.submit(() -> sendMessageBlocking(sem, latch, producer, record));
+                Future<RecordMetadata> future = executor.submit(() -> sendMessageBlocking(sem, producer, record));
                 futures.put(future.hashCode(), future);
             }
 
+            logger.info("Sent {} messages in batch {}, outstanding futures {}", maxMessages, b, futures.size());
+
             rc = checkFutures(futures);
         }
+
+        logger.info("Finished sending, outstanding futures {}", futures.size());
 
         boolean complete = false;
 
@@ -198,10 +201,28 @@ public class MessageWorker {
         return rc;
     }
 
+    public static SendParams parseInput(String ...args) {
+        // arg1 - rate, arg2 - batches
+        int rate = 0;
+        int batches = 0;
+
+        if (args.length >= 2) {
+            rate = Integer.parseInt(args[0]);
+        }
+
+        if (args.length >= 3) {
+            batches = Integer.parseInt(args[1]);
+        }
+
+        return new SendParams(rate, batches);
+    }
+
     public static void main(String... args) throws IOException {
 
         final String messageFile = "message.json";
         final String propertiesFile = "producer.properties";
+
+        SendParams sendParams = parseInput(args);
 
         checkInput(propertiesFile, messageFile);
 
@@ -216,7 +237,7 @@ public class MessageWorker {
             SendReturnCode rc = SendReturnCode.SUCCESS;
             do {
                 try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
-                    rc = MessageWorker.messageLoop(messageFile, topic, executor, producer);
+                    rc = MessageWorker.messageLoop(messageFile, topic, executor, producer, sendParams);
                 }
             } while (rc == SendReturnCode.CLOSE_PRODUCER);
         }
