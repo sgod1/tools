@@ -111,7 +111,7 @@ public class MessageWorker {
             if (futures.get(k).isDone()) {
                 try {
                     RecordMetadata meta = futures.get(k).get();
-                    logger.info("Message sent to topic {} partition {} offset {}", meta.topic(), meta.partition(), meta.offset());
+                    if (logger.isDebugEnabled()) logger.debug("Message sent to topic {} partition {} offset {}", meta.topic(), meta.partition(), meta.offset());
 
                 } catch (ExecutionException | InterruptedException e) {
                     Throwable cause = e.getCause();
@@ -160,6 +160,14 @@ public class MessageWorker {
         BatchSendReturnCode brc = BatchSendReturnCode.SUCCESS;
 
         for (int b = 0; b < batches && BatchSendReturnCode.successOrRecover(brc); b++) {
+
+            if (b > 0) {
+                try {
+                    TimeUnit.SECONDS.sleep(1);
+                } catch (InterruptedException e) {
+                    // throw new RuntimeException(e);
+                }
+            }
 
             // rate: m/s
             for (int mcount = 0; mcount < maxMessages; mcount++) {
