@@ -1,16 +1,19 @@
 package org.szesto;
 
+import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.AuthorizationException;
 import org.apache.kafka.common.errors.OutOfOrderSequenceException;
 import org.apache.kafka.common.errors.UnsupportedVersionException;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -69,6 +72,8 @@ public class MessageWorker {
     }
 
     public static Properties loadProperties(String propertiesFile) throws IOException {
+        checkPropertiesFile(propertiesFile);
+
         Properties props = new Properties();
 
         props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
@@ -86,14 +91,23 @@ public class MessageWorker {
         return new KafkaProducer<>(props);
     }
 
-    public static void checkInput(String propertiesFile, String messageFile) {
+    public static KafkaConsumer<String, String> createConsumer(Properties props) {
 
-        logger.info("Kafka properties file: {}, message file: {}", propertiesFile, messageFile);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+
+        return new KafkaConsumer<>(props);
+    }
+
+    public static void checkPropertiesFile(String propertiesFile) {
+        logger.info("Kafka properties file: {}", propertiesFile);
 
         if (InputWorker.fileMissing(propertiesFile)) {
             throw new IllegalArgumentException("File '" + propertiesFile + "' not found");
         }
+    }
 
+    public static void checkMessageFile(String messageFile) {
         if (InputWorker.fileMissing(messageFile)) {
             throw new IllegalArgumentException("File '" + messageFile + "' not found");
         }
@@ -141,7 +155,51 @@ public class MessageWorker {
         return brc;
     }
 
-    public static BatchSendReturnCode messageLoop(String messageFile, String topic, ExecutorService executor, KafkaProducer<String, String> producer, SendParams sendParams) throws IOException {
+    public static boolean messageConsumerLoop(String topic, KafkaConsumer<String, String> consumer, ConsumeParams params) throws IOException {
+
+        consumer.subscribe(Collections.singletonList(topic));
+
+        int numRecords = 0;
+        Duration duration = Duration.ZERO;
+
+        boolean receiveMoreMessages = true;
+
+        try {
+            while (receiveMoreMessages) {
+
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+
+                numRecords += records.count();
+                duration = duration.plusSeconds(1);
+
+                if (params.maxRecords() > 0 && numRecords >= params.maxRecords()) {
+                    receiveMoreMessages = false;
+                }
+
+                if (! params.maxDuration().isZero() && duration.toSeconds() > params.maxDuration().toSeconds()) {
+                    receiveMoreMessages = false;
+                }
+
+                if (! records.isEmpty()) logger.info("Received {} messages", records.count());
+
+//                for (ConsumerRecord<String, String> record : records) {
+//                    String key = record.key();
+//                    String value = record.value();
+//
+//                    logger.info("Received message with key: {} and value: {}", key, value);
+//                }
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            Throwable cause = e.getCause();
+            logger.error("Error receiving message, root cause: ", e);
+            return false;
+        }
+    }
+
+    public static BatchSendReturnCode messageProducerLoop(String messageFile, String topic, ExecutorService executor, KafkaProducer<String, String> producer, SendParams sendParams) throws IOException {
 
         // one file or collection of files
         final String buf = InputWorker.readFile(messageFile);
@@ -209,18 +267,20 @@ public class MessageWorker {
         return brc;
     }
 
-    public static SendParams parseInput(String ...args) {
-        // arg1 - rate, arg2 - batches
-        int rate = 0;
-        int batches = 0;
+    public static ConsumeParams parseConsumerInput(String ...args) {
+        // arg1 - role, arg2 - maxRecords, arg3 - maxDurationMinutes
 
-        if (args.length >= 1) {
-            rate = Integer.parseInt(args[0]);
-        }
+        final int maxRecords = args.length >= 2 ? Integer.parseInt(args[1]) : 0;
+        final int maxDurationMinutes = args.length >= 3 ? Integer.parseInt(args[2]) : 0;
 
-        if (args.length >= 2) {
-            batches = Integer.parseInt(args[1]);
-        }
+        return new ConsumeParams(maxRecords, Duration.ofMinutes(maxDurationMinutes));
+    }
+
+    public static SendParams parseProducerInput(String ...args) {
+        // arg1 - role, arg2 - rate, arg3 - batches
+
+        final int rate = args.length >= 2 ? Integer.parseInt(args[1]) : 0;
+        final int batches = args.length >= 3 ? Integer.parseInt(args[2]) : 0;
 
         return new SendParams(rate, batches);
     }
@@ -242,29 +302,41 @@ public class MessageWorker {
         }
     }
 
-    public static void main(String... args) throws IOException {
+    public static void main(String ...args) throws IOException {
 
         final String messageFile = "message.json";
-        final String propertiesFile = "producer.properties";
 
-        SendParams sendParams = parseInput(args);
+        final String role = args.length > 1 ? args[0] : "producer";
 
-        checkInput(propertiesFile, messageFile);
+        final String propertiesFile = role.toLowerCase().startsWith("prod") ? "producer.properties" : "consumer.properties";
 
         final Properties props = loadProperties(propertiesFile);
 
         final String topic = props.getProperty("topic", "");
         if (topic.isEmpty()) {
-            throw new IllegalArgumentException("Topic is not defined in producer.properties file");
+            throw new IllegalArgumentException("Topic is not defined in the properties file");
         }
 
-        try (ExecutorService executor = executorsServiceFactory(props)) {
-            BatchSendReturnCode brc = BatchSendReturnCode.SUCCESS;
-            do {
-                try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
-                    brc = MessageWorker.messageLoop(messageFile, topic, executor, producer, sendParams);
-                }
-            } while (brc == BatchSendReturnCode.CLOSE_PRODUCER);
+        if (role.toLowerCase().startsWith("prod")) {
+            SendParams sendParams = parseProducerInput(args);
+
+            checkMessageFile(messageFile);
+
+            try (ExecutorService executor = executorsServiceFactory(props)) {
+                BatchSendReturnCode brc = BatchSendReturnCode.SUCCESS;
+                do {
+                    try (KafkaProducer<String, String> producer = MessageWorker.createProducer(props)) {
+                        brc = MessageWorker.messageProducerLoop(messageFile, topic, executor, producer, sendParams);
+                    }
+                } while (brc == BatchSendReturnCode.CLOSE_PRODUCER);
+            }
+
+        } else {
+            ConsumeParams consumeParams = parseConsumerInput(args);
+
+            try (KafkaConsumer<String, String> consumer = createConsumer(props)) {
+                boolean rc = MessageWorker.messageConsumerLoop(topic, consumer, consumeParams);
+            }
         }
     }
 }
