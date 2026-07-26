@@ -96,6 +96,8 @@ public class MessageWorker {
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+
         return new KafkaConsumer<>(props);
     }
 
@@ -160,8 +162,7 @@ public class MessageWorker {
         consumer.subscribe(Collections.singletonList(topic));
 
         int numRecords = 0;
-        Duration duration = Duration.ZERO;
-
+        
         boolean receiveMoreMessages = true;
 
         try {
@@ -170,24 +171,19 @@ public class MessageWorker {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
 
                 numRecords += records.count();
-                duration = duration.plusSeconds(1);
 
                 if (params.maxRecords() > 0 && numRecords >= params.maxRecords()) {
                     receiveMoreMessages = false;
                 }
 
-                if (! params.maxDuration().isZero() && duration.toSeconds() > params.maxDuration().toSeconds()) {
-                    receiveMoreMessages = false;
+                if (! records.isEmpty()) logger.info("Received {} records", records.count());
+
+                try {
+                    consumer.commitSync();
+                } catch (Exception e) {
+                    Throwable cause = e.getCause();
+                    logger.error("Error committing offsets, root cause: ", cause);
                 }
-
-                if (! records.isEmpty()) logger.info("Received {} messages", records.count());
-
-//                for (ConsumerRecord<String, String> record : records) {
-//                    String key = record.key();
-//                    String value = record.value();
-//
-//                    logger.info("Received message with key: {} and value: {}", key, value);
-//                }
             }
 
             return true;
@@ -306,7 +302,7 @@ public class MessageWorker {
 
         final String messageFile = "message.json";
 
-        final String role = args.length > 1 ? args[0] : "producer";
+        final String role = args.length >= 1 ? args[0] : "producer";
 
         final String propertiesFile = role.toLowerCase().startsWith("prod") ? "producer.properties" : "consumer.properties";
 
