@@ -16,7 +16,7 @@ Note, that *jdk 25* is not supported with current *3.4.0* version of *kafka-clie
 
 To send messages and save output to the file:
 ```
-java -jar kaf-3.0.0.jar prod [msgs/per second] [duration in seconds] 2>&1 | tee test.out
+java -jar kaf-3.0.0.jar prod [msgs/per second] [duration in seconds] 2>&1 | tee prod-test.out
 ```
 
 With no arguments, 1 msg will be sent in 1 batch.<br/>
@@ -61,7 +61,7 @@ executors.factory=virtual
 
 To receive messages and save output to the file:
 ```
-java -jar kaf-3.0.0.jar cons [number-of-messages]
+java -jar kaf-3.0.0.jar cons [number-of-messages] 2>&1 | tee cons-test.out
 ```
 Receive loop will receive at least `number-of-messages` if specified, otherwise receive until interrupted.<br/>
 
