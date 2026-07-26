@@ -93,6 +93,11 @@ public class MessageWorker {
 
     public static KafkaConsumer<String, String> createConsumer(Properties props) {
 
+        final String consumerGroup = props.getProperty(ConsumerConfig.GROUP_ID_CONFIG);
+        if (consumerGroup.isEmpty()) {
+            throw new IllegalArgumentException("Consumer group.id is not defined in the consumer.properties file");
+        }
+
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
@@ -162,7 +167,7 @@ public class MessageWorker {
         consumer.subscribe(Collections.singletonList(topic));
 
         int numRecords = 0;
-        
+
         boolean receiveMoreMessages = true;
 
         try {
